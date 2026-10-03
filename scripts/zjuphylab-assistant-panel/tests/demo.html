@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN" data-lab-panel-demo="true">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>匿名物理实验选课模拟页面</title>
+<style>
+  body{font:14px/1.5 system-ui,sans-serif;color:#173247;margin:24px;max-width:1160px}
+  h1{font-size:23px}.h5{font-size:14px;font-weight:normal}.red,.text-danger{color:#a33525}
+  .fixture-controls{padding:14px;border:1px solid #9bb4c1;background:#eef6f9;border-radius:8px;margin-bottom:18px}
+  .fixture-controls label{margin-right:12px;display:inline-block}.fixture-controls button,.fixture-controls select{margin:4px;padding:6px}
+  .nav-tabs{display:flex;list-style:none;gap:12px;padding:0}.nav-tabs li{cursor:pointer;padding:8px;border:1px solid #9bb4c1}.nav-tabs li.active{background:#d1ecf3}
+  table{width:100%;border-collapse:collapse}th,td{border:1px solid #bccdd7;padding:10px;text-align:left}th{background:#edf3f6}
+  .flex{display:flex;align-items:center;gap:12px}.flexOne{flex:1}.table-responsive{overflow:auto}select{max-width:240px}
+  .btn{padding:6px 10px;border:1px solid #446a7b;border-radius:4px;cursor:pointer}.btn-purple{color:#fff;background:#654496}.btn-primary{color:#fff;background:#2374a3}
+  #fixture-log{white-space:pre-wrap;font:12px/1.5 ui-monospace,monospace;border:1px solid #bccdd7;padding:10px;max-height:240px;overflow:auto}
+  #fixture-last-ics{width:100%;min-height:200px;font:12px/1.4 ui-monospace,monospace}
+</style>
+<h1>匿名选课测试页</h1>
+<nav class="navbar-container">当前用户：<span id="fixture-navbar-user">demo-user-a</span></nav>
+<p>全部课程、教师、场地和标识均为伪造数据。本页仅在浏览器本地修改状态，不发送请求。</p>
+<div class="fixture-controls">
+  <label>模拟账号 <select id="fixture-account"><option value="demo-user-a">匿名用户 A</option><option value="demo-user-b">匿名用户 B</option></select></label>
+  <label>学期 <select id="fixture-term"><option value="demo-term-a">模拟学期 A（18 周）</option><option value="demo-term-b">模拟学期 B（20 周）</option></select></label>
+  <label>确认后的行为 <select id="fixture-mode"><option value="record">正常录入</option><option value="cancel">确认后模拟取消</option><option value="no-result">结果不明：不录入</option><option value="different-week">录入为其他周次</option></select></label>
+  <button id="fixture-reverse">重排教学班</button><button id="fixture-rename">重命名首个实验</button><button id="fixture-time">清空 / 恢复首个时间</button>
+  <button id="fixture-vue">切换 Vue 状态可见性</button><button id="fixture-rerender">模拟整表重绘</button><button id="fixture-resolve">录入上个未明请求</button>
+  <button id="fixture-reset">重置模拟状态</button><button id="fixture-load-panel">加载仓库当前脚本</button>
+  <button id="fixture-storage">开启 / 关闭草稿写入失败</button><button id="fixture-legacy">注入旧版待核对记录</button><button id="fixture-both-pending">注入新版 + 旧版待核对记录</button><button id="fixture-clear-storage">清除面板测试记录</button>
+  <label>本地课表接口 <select id="fixture-api-mode"><option value="normal">正常：2 项选课 / 3 个日期</option><option value="second-course-fails">第二课程读取失败</option><option value="delayed">模拟延迟 300 毫秒</option></select></label>
+  <p>注入恢复记录后，关闭并重新载入面板或刷新页面。写入失败只针对此模拟页面的面板 key；注入按钮仍可写入预设测试记录。</p>
+  <p id="fixture-summary"></p>
+  <p id="fixture-storage-summary"></p><pre id="fixture-api-summary"></pre>
+</div>
+<details id="fixture-export-check"><summary>导出结果检查（仅匿名本地数据）</summary><p id="fixture-ics-summary">尚未生成日历 Blob。</p><textarea id="fixture-last-ics" aria-label="最近生成的匿名 ICS 内容" readonly></textarea></details>
+<div class="main-content">
+  <div class="main-content-inner">
+    <div class="page-content">
+      <div class="page-header"><h1>选课管理 <span class="red h5"></span></h1></div>
+      <div class="tabbable"><ul class="nav nav-tabs"></ul></div>
+      <p class="text-danger"></p>
+      <div class="table-responsive"><table class="table table-bordered"><thead><tr><th>实验名称</th><th>实验详情</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+</div>
+<p>按钮点击计数和事件记录（用于检查是否重复提交或误触退课）：</p>
+<pre id="fixture-log"></pre>
+<script>
+(() => {
+  'use strict';
+  const main=document.querySelector('.main-content'), body=document.querySelector('tbody');
+  const terms={
+    'demo-term-a':{id:'demo-term-a',name:'模拟学期 A',stadate:'2026/09/07',enddate:'2027/01/10',weekCount:18},
+    'demo-term-b':{id:'demo-term-b',name:'模拟学期 B',stadate:'2027/02/22',enddate:'2027/07/11',weekCount:20}
+  };
+  const courses=[{id:'demo-course-a',courseName:'模拟基础实验 · 周一与周二',count:3},{id:'demo-course-b',courseName:'模拟拓展实验 · 周三',count:2}];
+  const makeLabs=courseId=>courseId==='demo-course-a'?[
+    {id:101,courseId,labName:'合成实验甲',teacherName:'示例教师甲',address:'模拟楼 101',times:'星期一 第6-8节',openWeek:['2','4','6','16'],contain:8,selectWeek:''},
+    {id:102,courseId,labName:'合成实验甲',teacherName:'示例教师乙',address:'模拟楼 102',times:'星期二 第1-3节',openWeek:['2','4','6','16'],contain:8,selectWeek:''},
+    {id:103,courseId,labName:'合成两周实验乙',teacherName:'示例教师丙',address:'模拟楼 103',times:'周一下午 第6-8节',openWeek:['1,2','3,4','15,16'],contain:8,selectWeek:''},
+    {id:104,courseId,labName:'合成实验丙',teacherName:'示例教师丁',address:'模拟楼 104',times:'星期三 第9-11节',openWeek:['5','7','18'],contain:8,selectWeek:''},
+    {id:105,courseId,labName:'合成满员实验丁',teacherName:'示例教师戊',address:'模拟楼 105',times:'星期一 第6-8节',openWeek:['2','4'],contain:8,selectWeek:''},
+    {id:106,courseId,labName:'合成已选实验戊',teacherName:'示例教师己',address:'模拟楼 106',times:'星期四 第1-3节',openWeek:['8','10','12'],contain:8,selectWeek:'8'}
+  ]:[
+    {id:201,courseId,labName:'合成拓展实验甲',teacherName:'示例教师庚',address:'模拟楼 201',times:'星期三 第1-3节',openWeek:['3','19'],contain:6,selectWeek:''},
+    {id:202,courseId,labName:'合成拓展实验乙',teacherName:'示例教师辛',address:'模拟楼 202',times:'星期三 第6-8节',openWeek:['3','20'],contain:6,selectWeek:''},
+    {id:203,courseId,labName:'合成拓展两周实验',teacherName:'示例教师壬',address:'模拟楼 203',times:'星期五 第1-3节',openWeek:['5,6','17,18'],contain:6,selectWeek:''}
+  ];
+  let exposeVue=true, mode='record', lastPending=null,failStorageWrites=false,apiMode='normal';
+  const storeKey='zju-lab-panel-v12',legacyStoreKey='zju-lab-panel-v11';
+  const originalSetItem=Storage.prototype.setItem,originalGetItem=Storage.prototype.getItem,originalRemoveItem=Storage.prototype.removeItem;
+  const originalCreateObjectURL=URL.createObjectURL.bind(URL),calendarBlobs=new Map();
+  let lastCalendar=null;
+  URL.createObjectURL=function(blob){
+    const url=originalCreateObjectURL(blob);
+    if(blob instanceof Blob && /^text\/calendar(?:;|$)/i.test(blob.type)){
+      const capture={bytes:blob.size,type:blob.type,filename:'',value:'',base64:''};calendarBlobs.set(url,capture);lastCalendar=capture;
+      const summary=document.querySelector('#fixture-ics-summary');summary.textContent=`已生成 ${blob.size} 字节日历，正在读取匿名内容。`;
+      if(blob.size>1024*1024){summary.textContent='匿名日历超过 1 MiB；本 fixture 跳过内容展示。';return url;}
+      Promise.all([blob.text(),blob.arrayBuffer()]).then(([value,buffer])=>{
+        capture.value=value;const bytes=new Uint8Array(buffer);let binary='';for(let index=0;index<bytes.length;index+=32768)binary+=String.fromCharCode(...bytes.subarray(index,index+32768));capture.base64=btoa(binary);
+        if(lastCalendar!==capture)return;
+        const textarea=document.querySelector('#fixture-last-ics');textarea.value=value;textarea.textContent=value;textarea.dataset.icsBase64=capture.base64;
+        summary.textContent=`已捕获 ${capture.bytes} 字节 / ${capture.type}；下载文件名：${capture.filename||'尚未点击'}。Base64 属性保留原始 CRLF 和 UTF-8 字节。`;
+      }).catch(()=>{summary.textContent='匿名日历 Blob 读取失败。';});
+    }
+    return url;
+  };
+  document.addEventListener('click',event=>{
+    const link=event.target.closest?.('a[download]'),capture=link&&calendarBlobs.get(link.href);if(!capture)return;
+    capture.filename=link.download;
+    if(lastCalendar===capture)document.querySelector('#fixture-ics-summary').textContent=`已捕获 ${capture.bytes} 字节 / ${capture.type}；下载文件名：${capture.filename}。Base64 属性保留原始 CRLF 和 UTF-8 字节。`;
+  },true);
+  Storage.prototype.setItem=function(key,value){
+    if(failStorageWrites && this===sessionStorage && [storeKey,legacyStoreKey].includes(String(key)))throw new DOMException('Synthetic storage write failure','QuotaExceededError');
+    const result=originalSetItem.call(this,key,value);
+    if(this===sessionStorage && [storeKey,legacyStoreKey].includes(String(key)))queueMicrotask(renderSummary);
+    return result;
+  };
+  const vm={currentTerm:terms['demo-term-a'],curCourse:courses[0],curCourseId:courses[0].id,courseList:courses,courseClassList:[],selectCoutseList:[],selectCourseCount:{}};
+  vm.$el=main;
+  vm.$children=[];
+  vm.weekArray={0:'周日',1:'周一',2:'周二',3:'周三',4:'周四',5:'周五',6:'周六'};
+  vm.user={username:'demo-user-a'};
+  const stats={selectClicks:0,cancelClicks:0,confirmations:0,recorded:0,getCalls:0,mutationRequests:0};
+  const apiCalls=[],originalFetch=window.fetch.bind(window);
+  vm.setRequestUrl=(request,data)=>{
+    const params=typeof request==='string'?{path:request,data}:request;
+    const url=new URL(`/lab-course${params.path}`,location.origin);
+    for(const [key,value] of Object.entries(params.data||{}))if(value!==null&&value!==undefined)url.searchParams.set(key,String(value));
+    return url.href;
+  };
+  try{
+    if(!localStorage.getItem('Authorization'))localStorage.setItem('Authorization','synthetic-local-token');
+    if(!localStorage.getItem('token_type'))localStorage.setItem('token_type','Bearer');
+  }catch{}
+  const mockSchedule=courseId=>courseId==='demo-course-a'?[
+    {id:4001,course_id:courseId,course_lab_id:301,course_name:courses[0].courseName,lab_name:'合成已选课表实验甲',teacher_name:'示例课表教师甲',address:'模拟课表楼 301',times:'08:00',select_week:'1,2',dates:vm.currentTerm.id==='demo-term-a'?'2026-09-07,2026-09-14':'2027-02-22,2027-03-01'}
+  ]:[
+    {id:4002,course_id:courseId,course_lab_id:302,course_name:courses[1].courseName,lab_name:'合成已选课表实验乙',teacher_name:'示例课表教师乙',address:'模拟课表楼 302',times:'13:25',select_week:'3',dates:vm.currentTerm.id==='demo-term-a'?'2026-09-23':'2027-03-10'}
+  ];
+  window.fetch=async(input,options={})=>{
+    const url=new URL(typeof input==='string'?input:input.url||String(input),location.href);
+    if(!url.pathname.startsWith('/lab-course/api/'))return originalFetch(input,options);
+    if(url.origin!==location.origin)throw new Error('Local fixture blocks nonlocal lab API requests');
+    const method=String(options.method||input.method||'GET').toUpperCase();
+    apiCalls.push({method,path:url.pathname});if(method==='GET')stats.getCalls++;else stats.mutationRequests++;
+    renderSummary();
+    if(method!=='GET')return new Response(JSON.stringify({code:405,msg:'Synthetic fixture allows GET only'}),{status:405,headers:{'Content-Type':'application/json'}});
+    if(apiMode==='delayed')await new Promise(resolve=>setTimeout(resolve,300));
+    let payload;
+    if(url.pathname==='/lab-course/api/courses/uid')payload={code:200,data:courses.map(course=>({...course,termId:vm.currentTerm.id}))};
+    else if(url.pathname==='/lab-course/api/course/lab/students/full'){
+      const courseId=url.searchParams.get('courseId')||url.searchParams.get('course_id');
+      if(apiMode==='second-course-fails'&&courseId==='demo-course-b')return new Response(JSON.stringify({code:500,msg:'Synthetic second course read failure'}),{status:500,headers:{'Content-Type':'application/json'}});
+      payload={code:200,data:{content:courseId?mockSchedule(courseId):[...mockSchedule('demo-course-a'),...mockSchedule('demo-course-b')],totalElements:courseId?1:2}};
+    }else return new Response(JSON.stringify({code:404,msg:'Unknown synthetic API path'}),{status:404,headers:{'Content-Type':'application/json'}});
+    return new Response(JSON.stringify(payload),{status:200,headers:{'Content-Type':'application/json'}});
+  };
+  const records=new Map(), labsByContext=new Map();
+  const contextKey=()=>`${vm.user.username}|${vm.currentTerm.id}|${vm.curCourseId}`;
+  const log=message=>{document.querySelector('#fixture-log').textContent+=message+'\n';};
+  const selected=lab=>vm.selectCoutseList.some(item=>item.courseLabId===lab.id);
+  function loadContext(){
+    const key=contextKey();
+    if(!labsByContext.has(key))labsByContext.set(key,makeLabs(vm.curCourseId));
+    vm.courseClassList=labsByContext.get(key);
+    if(!records.has(key))records.set(key,vm.curCourseId==='demo-course-a'?[{id:'demo-enrollment-106',courseLabId:106,selectWeek:'8'}]:[]);
+    vm.selectCoutseList=records.get(key);
+    vm.selectCourseCount={};
+    for(const lab of vm.courseClassList)for(const week of lab.openWeek)vm.selectCourseCount[`${lab.id}_${week}`]=lab.id===105?lab.contain:1;
+    render();
+  }
+  function record(pending,forcedWeek){
+    const labs=labsByContext.get(pending.context), list=records.get(pending.context);
+    const lab=labs?.find(item=>item.id===pending.id);
+    if(!lab||!list){log('待处理教学班已经消失；未录入。');return;}
+    const value=forcedWeek||pending.value;
+    lab.selectWeek=value;
+    if(!list.some(item=>item.courseLabId===lab.id))list.push({id:`demo-enrollment-${lab.id}`,courseLabId:lab.id,selectWeek:value});
+    stats.recorded++;log(`模拟录入：教学班 ${lab.id} / 第 ${value} 周`);render();
+  }
+  function choose(lab){
+    stats.selectClicks++;renderSummary();
+    if(!lab.selectWeek){alert('请选择一个周次');return;}
+    stats.confirmations++;
+    if(!confirm(`是否选择${lab.teacherName}老师的${lab.labName}实验`)){log(`用户取消确认：教学班 ${lab.id}`);renderSummary();return;}
+    const pending={context:contextKey(),id:lab.id,value:String(lab.selectWeek)};
+    if(mode==='cancel'){log(`模拟请求取消：教学班 ${lab.id}`);return;}
+    if(mode==='no-result'){lastPending=pending;log(`模拟结果不明：教学班 ${lab.id}`);return;}
+    setTimeout(()=>{
+      const changed=lab.openWeek.find(value=>String(value)!==pending.value);
+      record(pending,mode==='different-week'?String(changed||'1'):null);
+    },80);
+  }
+  function renderSummary(){
+    document.querySelector('#fixture-summary').textContent=`Vue 状态：${exposeVue?'可读取':'已隐藏，测试 DOM 回退'}；草稿写入：${failStorageWrites?'模拟失败':'正常'}；选课按钮点击 ${stats.selectClicks} 次；已选择按钮点击 ${stats.cancelClicks} 次；确认弹窗 ${stats.confirmations} 次；模拟录入 ${stats.recorded} 次。`;
+    const storageInfo=[storeKey,legacyStoreKey].map(key=>{let saved;try{saved=JSON.parse(originalGetItem.call(sessionStorage,key)||'null');}catch{return `${key}：格式无效`;}
+      return `${key}：${saved?'存在':'不存在'}；待核对 ${saved?.uncertain?1:0} 项；排队待核对 ${Array.isArray(saved?.pendingBacklog)?saved.pendingBacklog.length:0} 项`;});
+    document.querySelector('#fixture-storage-summary').textContent=storageInfo.join(' / ');
+    document.querySelector('#fixture-api-summary').textContent=`只读 GET ${stats.getCalls} 次；变更请求 ${stats.mutationRequests} 次。\n`+apiCalls.map(call=>`${call.method} ${call.path}`).join('\n');
+  }
+  function render(){
+    if(exposeVue)main.__vue__=vm;else delete main.__vue__;
+    document.querySelector('#fixture-navbar-user').textContent=vm.user.username;
+    document.querySelector('.page-header .h5').textContent=`本学期上课时间：${vm.currentTerm.stadate} 到 ${vm.currentTerm.enddate}，共${vm.currentTerm.weekCount}周`;
+    document.querySelector('.page-content>.text-danger').textContent=`本课程至少实验次数${vm.curCourse.count}次`;
+    const nav=document.querySelector('.nav-tabs');nav.replaceChildren();
+    for(const course of courses){const li=document.createElement('li'),a=document.createElement('a');li.setAttribute('value',course.id);li.className=course.id===vm.curCourseId?'active':'';a.textContent=course.courseName;li.append(a);li.onclick=()=>{vm.curCourse=course;vm.curCourseId=course.id;loadContext();log(`切换课程：${course.id}`);};nav.append(li);}
+    body.replaceChildren();
+    for(const lab of vm.courseClassList){
+      const tr=document.createElement('tr'),nameCell=document.createElement('td'),detailCell=document.createElement('td');
+      const name=document.createElement('a');name.textContent=lab.labName;nameCell.append(name);
+      const flex=document.createElement('div');flex.className='flex';
+      const teacher=document.createElement('div'),teacherLink=document.createElement('a'),address=document.createElement('div'),time=document.createElement('div'),weekCell=document.createElement('div'),select=document.createElement('select'),buttonCell=document.createElement('div'),red=document.createElement('div');
+      teacher.style.width='80px';teacherLink.textContent=lab.teacherName;teacher.append(teacherLink);address.className=time.className='flexOne';address.textContent=lab.address;time.textContent=lab.times;select.style.width='200px';select.setAttribute('placeholder','请选择');
+      for(const week of lab.openWeek){const option=document.createElement('option');option.value=String(week);option.textContent=`第${week}周 已选${vm.selectCourseCount[`${lab.id}_${week}`]||0}人 / 容量${lab.contain}人`;option.disabled=selected(lab)||(vm.selectCourseCount[`${lab.id}_${week}`]||0)>=lab.contain;select.append(option);}
+      select.value=String(lab.selectWeek||'');select.onchange=()=>{lab.selectWeek=select.value;};weekCell.append(select);red.className='red';
+      if(selected(lab)){const button=document.createElement('button');button.className='btn btn-primary btn-sm selectCourseBtn';button.textContent='已选择';button.onclick=()=>{stats.cancelClicks++;log(`误触退课入口：教学班 ${lab.id}（本模拟不会取消）`);renderSummary();};red.append(button);}
+      else if(lab.openWeek.some(week=>(vm.selectCourseCount[`${lab.id}_${week}`]||0)<lab.contain)){const button=document.createElement('button');button.className='btn btn-purple btn-sm selectCourseBtn';button.textContent='选课';button.onclick=()=>choose(lab);red.append(button);}
+      else red.textContent='已达到人数上限';
+      buttonCell.append(red);flex.append(teacher,address,time,weekCell,buttonCell);detailCell.append(flex);tr.append(nameCell,detailCell);body.append(tr);
+    }
+    renderSummary();
+  }
+  document.querySelector('#fixture-term').onchange=event=>{vm.currentTerm=terms[event.target.value];loadContext();log(`切换学期：${vm.currentTerm.id}`);};
+  document.querySelector('#fixture-account').onchange=event=>{vm.user.username=event.target.value;loadContext();log(`切换匿名账号：${vm.user.username}`);};
+  document.querySelector('#fixture-mode').onchange=event=>{mode=event.target.value;};
+  document.querySelector('#fixture-reverse').onclick=()=>{vm.courseClassList.reverse();render();log('已反转教学班顺序。');};
+  document.querySelector('#fixture-rename').onclick=()=>{vm.courseClassList[0].labName+='（改名）';render();log('首个实验已改名。');};
+  document.querySelector('#fixture-time').onclick=()=>{const lab=vm.courseClassList[0];if(lab.times){lab._originalTimes=lab.times;lab.times='';}else lab.times=lab._originalTimes||'星期一 第6-8节';render();log('首个实验时间已切换。');};
+  document.querySelector('#fixture-vue').onclick=()=>{exposeVue=!exposeVue;render();};
+  document.querySelector('#fixture-rerender').onclick=()=>{render();log('已重绘全部教学班 DOM。');};
+  document.querySelector('#fixture-resolve').onclick=()=>{if(lastPending){record(lastPending);lastPending=null;}else log('没有待处理的模拟请求。');};
+  document.querySelector('#fixture-reset').onclick=()=>{labsByContext.clear();records.clear();Object.assign(stats,{selectClicks:0,cancelClicks:0,confirmations:0,recorded:0,getCalls:0,mutationRequests:0});apiCalls.length=0;lastPending=null;loadContext();log('已重置模拟页面；面板 sessionStorage 未修改。');};
+  document.querySelector('#fixture-load-panel').onclick=()=>{const script=document.createElement('script');script.src='../zjuphylab-assistant-panel.user.js';script.onload=()=>log('已载入当前脚本。');script.onerror=()=>log('加载失败；请通过本地 HTTP 服务打开 fixture。');document.head.append(script);};
+  function injectPending(includeNew){
+    const legacy={context:'synthetic-old-panel-context',mode:'original',draft:[],uncertain:{id:5,value:'5',at:Date.now()-1000}};
+    originalSetItem.call(sessionStorage,legacyStoreKey,JSON.stringify(legacy));
+    if(includeNew){
+      const lab=vm.courseClassList.find(item=>!selected(item)&&item.id!==105)||vm.courseClassList[0];
+      const clean=value=>String(value??'').normalize('NFKC').replace(/\s+/g,' ').trim();
+      const hash=value=>{let h=2166136261;for(const c of String(value))h=Math.imul(h^c.charCodeAt(0),16777619);return (h>>>0).toString(16);};
+      const session=[clean(vm.weekArray[vm.curCourse.week]),String(vm.curCourse.time)==='1'?'上午':String(vm.curCourse.time)==='2'?'下午':''].join('');
+      const context=JSON.stringify([exposeVue?vm.currentTerm.id:'',vm.curCourse.id,hash(exposeVue?vm.user.username:clean(document.querySelector('.navbar-container').textContent)),vm.curCourse.courseName,exposeVue?session:'',exposeVue?'':clean(document.querySelector('.page-header h1').textContent)]);
+      const id=exposeVue?`vue:${vm.currentTerm.id}:${vm.curCourse.id}:${lab.id}`:`dom:${JSON.stringify([lab.labName,lab.teacherName,lab.address,lab.times])}`;
+      const time=[exposeVue?session:'',lab.times].filter(Boolean).join(' ')||'未提供',signature=JSON.stringify([lab.labName,lab.teacherName,lab.address,time]);
+      const value=String(lab.openWeek[0]),draft=[{id,value,signature}];
+      const uncertain={id,value,name:lab.labName,time,signature,context,at:Date.now()};
+      originalSetItem.call(sessionStorage,storeKey,JSON.stringify({context,order:[],draft,target:vm.courseClassList.flatMap(item=>item.openWeek).join(','),coverage:false,uncertain,pendingBacklog:[]}));
+    }
+    renderSummary();log(includeNew?'已注入两个不同的匿名待核对请求。重新载入面板测试逐项核对。':'已注入旧版匿名待核对请求。重新载入面板测试迁移。');
+  }
+  document.querySelector('#fixture-storage').onclick=()=>{failStorageWrites=!failStorageWrites;renderSummary();log(`草稿写入失败：${failStorageWrites?'开启':'关闭'}`);};
+  document.querySelector('#fixture-legacy').onclick=()=>injectPending(false);
+  document.querySelector('#fixture-both-pending').onclick=()=>injectPending(true);
+  document.querySelector('#fixture-clear-storage').onclick=()=>{for(const key of [storeKey,legacyStoreKey])originalRemoveItem.call(sessionStorage,key);renderSummary();log('已清除两个面板测试 key；当前面板内存未修改。');};
+  document.querySelector('#fixture-api-mode').onchange=event=>{apiMode=event.target.value;};
+  window.labPanelFixture={vm,stats,apiCalls,render,renderSummary,loadContext,record,contextKey,injectPending,mockSchedule,get lastCalendar(){return lastCalendar;},get pending(){return lastPending;},get storageRecords(){return [storeKey,legacyStoreKey].map(key=>({key,value:originalGetItem.call(sessionStorage,key)}));},setStorageFailure(value){failStorageWrites=!!value;renderSummary();},setApiMode(value){apiMode=value;document.querySelector('#fixture-api-mode').value=value;},setMode(value){mode=value;document.querySelector('#fixture-mode').value=value;},setVueVisible(value){exposeVue=!!value;render();}};
+  loadContext();
+})();
+</script>
+</html>
