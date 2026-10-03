@@ -1,10 +1,11 @@
+// SPDX-License-Identifier: MIT
 /**
 * Script type: console-snippet
 * Target: ZJU E-Lang question page; the host is intentionally not fixed yet.
 * Side effects: page-enhancement
 *
  * Original author: silentle (https://github.com/silentle)
- * Redistribution: authorized by the original author; no standard open-source license specified.
+ * Redistribution: authorized by the original author under the MIT License.
  * Panel adaptation: Ayanami-WU and Codex.
  *
 * Run this snippet only on a page and account that you are authorized to inspect.
@@ -13,7 +14,7 @@
   'use strict';
 
   const ID = 'zju-elang-answer-grabber';
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const old = document.getElementById(ID);
 
   if (old) {
@@ -135,7 +136,7 @@
     '.table-wrap{overflow:auto;border:1px solid #dce6eb;border-radius:8px}table{width:100%;border-collapse:collapse;font-size:12px;min-width:620px}th,td{text-align:left;border-bottom:1px solid #dce6eb;padding:7px 8px;vertical-align:top}th{background:#eef4f7;position:sticky;top:0}td:first-child{width:48px}td.type{width:90px;color:#607681}td.answer{white-space:pre-wrap;color:#075863;font-weight:600}tr:last-child td{border-bottom:0}footer{margin-top:10px;font-size:12px;color:#516a77}',
     '</style>',
     '<section aria-label="ZJU E-Lang 答案读取辅助面板">',
-    '<header><b>ZJU E-Lang · 答案读取辅助面板</b><span>v0.1.0</span><button id="fold" title="收起或展开">收起</button><button id="close" title="关闭面板">×</button></header>',
+    '<header><b>ZJU E-Lang · 答案读取辅助面板</b><span>v0.1.1</span><button id="fold" title="收起或展开">收起</button><button id="close" title="关闭面板">×</button></header>',
     '<main>',
     '<p class="muted">读取当前页面 Vue 状态中的 jobList；只展示和复制前端已有数据，不自动填答或提交。</p>',
     '<div class="actions"><button id="refresh" class="primary">重新读取</button><button id="copy">复制答案</button><input id="filter" type="search" placeholder="筛选题目或答案"></div>',
