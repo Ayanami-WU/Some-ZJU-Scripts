@@ -1,7 +1,7 @@
 # ZJU E-Lang 答案读取辅助面板
 
 - 类型：console-snippet
-- 目标页面：https://elang.zju.edu.cn；具体题目路径由页面实际入口决定
+- 目标页面：[https://elang.zju.edu.cn](https://elang.zju.edu.cn)；具体题目路径由页面实际入口决定
 - 版本：0.2.0
 - 副作用等级：page-enhancement
 - 当前状态：experimental
