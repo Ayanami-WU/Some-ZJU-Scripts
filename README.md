@@ -52,4 +52,4 @@ docs/
 
 新增或修改脚本前，请先阅读 [`docs/script-spec.md`](docs/script-spec.md) 和 [`CONTRIBUTING.md`](CONTRIBUTING.md)。模板位于 [`templates/`](templates/)。
 
-后续将补充元数据检查、语法检查和目录索引生成工具。
+在仓库根目录运行 `node tools/check.mjs` 做静态检查；运行 `node tools/check.mjs --test` 显式执行本地测试。默认不执行浏览器脚本，`--strict` 可将警告视为失败。检查范围、模拟数据说明和完整命令见 [`tools/README.md`](tools/README.md)。

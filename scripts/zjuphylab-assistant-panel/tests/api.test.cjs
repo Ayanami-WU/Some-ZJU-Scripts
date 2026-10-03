@@ -99,7 +99,9 @@ test('separate clients keep authorization isolated and never place it in returne
     calls.push(options.headers.Authorization);
     return envelope([{id:11,courseName:'示例课程'}]);
   };
+  // repo-check: allow-secret credential-literal -- 独立客户端隔离测试使用的匿名认证字符串
   const first=clientWith(fetchImpl,{authorization:'Bearer first-private-session'});
+  // repo-check: allow-secret credential-literal -- 独立客户端隔离测试使用的另一匿名认证字符串
   const second=clientWith(fetchImpl,{authorization:'Bearer second-private-session'});
   const results=await Promise.all([first.get(coursesPath,context),second.get(coursesPath,context)]);
   assert.deepEqual(calls,['Bearer first-private-session','Bearer second-private-session']);
@@ -175,6 +177,7 @@ test('cancellation during a request aborts its fetch and discards a reply receiv
 test('all enrolled courses are aggregated with courseId and only calendar fields survive',async()=>{
   const calls=[],progress=[];
   const courses=[{id:11,courseName:'课程甲'},{id:'12',courseName:'课程乙'}];
+  // repo-check: allow-secret credential-literal -- 字段过滤测试使用的匿名私密字段样例
   const privateFields={student_uid:'private-student-id',student_name:'private-student-name',phone:'private-phone',final_score:88,content:{private:'private-extra'},Authorization:'private-session'};
   const client={async get(path,params){
     calls.push({path,params});
