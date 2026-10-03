@@ -9,6 +9,7 @@
 ## 当前收录
 
 - zjuphylab-assistant-panel：大学物理实验选课辅助面板。
+- zju-elang-answer-grabber：E-Lang 前端题目数据读取辅助面板（原作者授权再发布）。
 
 具体脚本的使用边界、权限和验证状态以各自目录中的 README 为准。
 
